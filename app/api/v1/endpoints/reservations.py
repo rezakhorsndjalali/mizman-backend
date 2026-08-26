@@ -77,4 +77,4 @@ async def get_reservations(
         select(Reservation)
     )
 
-    return result.scalars().all()A  A       
+    return result.scalars().all()
