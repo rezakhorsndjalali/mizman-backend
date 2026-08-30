@@ -5,38 +5,68 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_all_get_apis():
-    failed_apis = []
+def test_docs():
+    response = client.get("/docs")
+    assert response.status_code == 200
+
+
+def test_openapi():
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "paths" in data
+    assert len(data["paths"]) > 0
+
+
+def test_all_registered_routes():
+    """
+    بررسی می‌کند که تمام Routeهای ثبت‌شده در FastAPI
+    واقعاً قابل دسترسی هستند و Backend خطای 500 نمی‌دهد.
+    """
+
+    ignored_paths = {
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+    }
+
+    tested_routes = 0
 
     for route in app.routes:
 
-        # فقط APIهای GET
-        if "GET" not in route.methods:
+        # فقط Routeهای واقعی API
+        if not hasattr(route, "methods"):
             continue
 
-        # APIهایی که پارامتر اجباری داخل URL دارند فعلاً رد می‌کنیم
-        if "{" in route.path:
+        path = route.path
+
+        # مستندات را قبلاً جدا تست کردیم
+        if path in ignored_paths:
             continue
 
-        # بعضی Routeهای داخلی مثل docs و openapi را رد می‌کنیم
-        if route.path in ["/docs", "/redoc", "/openapi.json"]:
+        # Routeهایی که پارامتر Path دارند
+        # مثل /users/{user_id}
+        if "{" in path or "}" in path:
             continue
 
-        try:
-            response = client.get(route.path)
+        methods = route.methods
 
-            # 500 یعنی خطای واقعی سمت Backend
-            if response.status_code >= 500:
-                failed_apis.append(
-                    f"{route.path} -> {response.status_code}"
-                )
+        for method in methods:
 
-        except Exception as e:
-            failed_apis.append(
-                f"{route.path} -> {e}"
+            # فعلاً GET را به صورت واقعی تست می‌کنیم
+            if method != "GET":
+                continue
+
+            response = client.get(path)
+
+            tested_routes += 1
+
+            # 500 یعنی مشکل واقعی در Backend
+            assert response.status_code < 500, (
+                f"Backend error on GET {path} "
+                f"-> {response.status_code}"
             )
 
-    assert not failed_apis, (
-        "Some APIs failed:\n" +
-        "\n".join(failed_apis)
-    )
+    assert tested_routes > 0
